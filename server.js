@@ -3,6 +3,8 @@ const QRCode = require('qrcode');
 const cors = require('cors');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const PQueue = require('p-queue').default;
+
 
 const app = express();
 app.use(cors());
@@ -26,6 +28,10 @@ let userInfo = null;
 ========================= */
 let leads = [];
 const MAX_LEADS = 500;
+
+const queue = new PQueue({
+  concurrency: 1 // 👈 ONLY 1 at a time (prevents crash)
+});
 
 /* =========================
    🌐 API ROUTES
@@ -132,10 +138,7 @@ const client = new Client({
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage'
-    ],
-    executablePath: isRender
-      ? '/opt/render/.cache/puppeteer/chrome/linux-*/chrome'
-      : undefined
+    ]
   }
 });
 
@@ -186,8 +189,11 @@ client.on('ready', async () => {
 });
 
 // 🚀 FAST & SAFE MESSAGE HANDLER
+// client.on('message_create', (message) => {
+//     setImmediate(() => handleMessage(message));
+// });
 client.on('message_create', (message) => {
-    setImmediate(() => handleMessage(message));
+  queue.add(() => handleMessage(message));
 });
 
 function extractPhoneNumbers(text) {
@@ -227,111 +233,72 @@ function isDuplicateMessage(senderNumber, messageText) {
 }
 
 async function handleMessage(message) {
+  try {
+    if (!message.body) return;
+
+    const text = message.body.toLowerCase();
+
+    // ✅ your keyword filter
+    if (!keywords.some(k => text.includes(k))) return;
+
+    // ❌ exclude keywords
+    const excludeKeywords = ["available", "free", "got cab", "i have"];
+    if (excludeKeywords.some(k => text.includes(k))) return;
+
+    const senderRaw = message.author || message.from;
+    const senderNumber = senderRaw.split('@')[0];
+
+    let senderName = senderNumber;
+    let groupName = "Unknown";
+
+    // 🔥 SAFE FETCH (RARE + CONTROLLED)
     try {
-     
-        // ✅ Allow both group + personal
-        const isGroup = message.from.includes('@g.us');
-        const isPersonal = message.from.includes('@c.us');
+      // only fetch sometimes (prevents crash)
+      if (Math.random() < 0.2) {
+        const contact = await message.getContact();
+        const chat = await message.getChat();
 
-        if (!isGroup && !isPersonal) return;
-        if (!message.body) return;
-
-        const text = message.body.toLowerCase();
-
-        // ✅ INCLUDE
-        if (!keywords.some(k => text.includes(k))) return;
-
-        // ❌ EXCLUDE
-        const excludeKeywords = [
-            "available", "free", "got cab", "i have",
-            "vacant", "empty"
-        ];
-        if (excludeKeywords.some(k => text.includes(k))) return;
-
-        const senderRaw = message.author || message.from;
-
-        // ✅ FIX number for personal chat
-        let senderNumber = senderRaw.split('@')[0];
-
-        if (message.from.includes('@c.us')) {
-            senderNumber = message.from.split('@')[0];
-        }
-
-        // let senderNumber = senderRaw.split('@')[0];
-        let senderName = senderNumber;
-        let groupName = message.from.split('@')[0];
-
-        // 🔥 CHECK CACHE FIRST
-        if (contactCache.has(senderRaw)) {
-            const data = contactCache.get(senderRaw);
-            senderName = data.name;
-            senderNumber = data.number;
-        }
-
-        if (groupCache.has(message.from)) {
-            groupName = groupCache.get(message.from);
-        }
-
-        // 🔥 ONLY FETCH IF NOT IN CACHE (VERY IMPORTANT)
-        if (!contactCache.has(senderRaw) || !groupCache.has(message.from)) {
-            try {
-                const contact = await message.getContact();
-                const chat = await message.getChat();
-
-                // 👤 CONTACT
-                if (contact) {
-                    senderName = contact.pushname || contact.name || senderNumber;
-
-                    // ⚡ BEST NUMBER SOURCE
-                    senderNumber = contact.number || senderNumber;
-
-                    contactCache.set(senderRaw, {
-                        name: senderName,
-                        number: senderNumber
-                    });
-                }
-
-                // 👥 GROUP
-                if (chat) {
-                    groupName = chat.name || groupName;
-                    groupCache.set(message.from, groupName);
-                }
-
-            } catch (err) {
-                console.log("⚠️ Fetch skipped (safe)");
-            }
-        }
-
-        console.log("🚨 LEAD:", senderName, groupName, senderNumber);
-
-        // ❌ skip duplicate check for personal chat
-        if (message.from.includes('@g.us')) {
-            if (isDuplicateMessage(senderNumber, message.body)) {
-                console.log("⛔ Duplicate skipped");
-                return;
-            }
-        }
-
-        addLead({
-            groupName,
-            senderName,
-            senderNumber,
-            message: message.body
-        });
-
+        if (contact?.pushname) senderName = contact.pushname;
+        if (chat?.name) groupName = chat.name;
+      }
     } catch (err) {
-        console.error("❌ Error:", err);
+      console.log("⚠️ Safe fetch skipped");
     }
+
+    // ✅ duplicate check
+    if (isDuplicateMessage(senderNumber, message.body)) {
+      return;
+    }
+
+    addLead({
+      groupName,
+      senderName,
+      senderNumber,
+      message: message.body
+    });
+
+  } catch (err) {
+    console.error("❌ Message error:", err.message);
+  }
 }
 
 // Reconnect
 client.on('disconnected', (reason) => {
-    console.log('❌ Disconnected:', reason);
-    client.initialize();
-});
+  console.log('❌ Disconnected:', reason);
 
+  setTimeout(() => {
+    client.initialize();
+  }, 5000);
+});
 client.initialize();
 
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled:', err.message);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ Crash prevented:', err.message);
+});
 /* =========================
    🚀 START SERVER
 ========================= */
