@@ -114,7 +114,7 @@ function updateOldLeads(senderRaw, groupRaw, name, number, group) {
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    headless: true,
+    headless: "new",
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -157,6 +157,10 @@ client.on('ready', () => {
 
 client.on('message_create', (message) => {
   queue.add(() => handleMessage(message));
+});
+
+client.on('loading_screen', (percent, message) => {
+  console.log(`Loading: ${percent}% - ${message}`);
 });
 
 /* =========================
@@ -277,12 +281,6 @@ console.log("App initializing...");
 
 client.initialize();
 
-setTimeout(() => {
-  console.log("🔄 Forcing re-init...");
-  if (!isReady) {
-    client.initialize();
-  }
-}, 10000);
 
 /* =========================
    🚀 START SERVER
