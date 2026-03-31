@@ -115,10 +115,14 @@ const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     headless: "new",
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // 👈 IMPORTANT
     args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--single-process"
     ]
   }
 });
