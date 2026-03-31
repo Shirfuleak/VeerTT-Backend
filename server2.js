@@ -202,7 +202,7 @@ async function handleMessage(message) {
         // 🚀 SAFE DATA (NO PUPPETEER CALLS)
         // const senderRaw = message.author || message.from;
         const senderRaw = message.author || message.from;
-// const senderNumber = senderRaw.split('@')[0];
+        // const senderNumber = senderRaw.split('@')[0];
 
         // const senderNumber = senderRaw.replace(/@.*/, "");
         const senderNumber =

@@ -187,8 +187,21 @@ client.on('message_create', (message) => {
     setImmediate(() => handleMessage(message));
 });
 
+function extractPhoneNumbers(text) {
+    const matches = text.match(/\b\d{10,13}\b/g);
+    return matches || [];
+}
+
+
 function isDuplicateMessage(senderNumber, messageText) {
-    const key = senderNumber + "_" + messageText.trim().toLowerCase();
+    const cleanText = messageText
+        .toLowerCase()
+        .replace(/[^\w\s]/gi, '')   // remove symbols
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const key = senderNumber + "_" + cleanText; // ✅ NO group
+
     const now = Date.now();
 
     if (recentMessages.has(key)) {
@@ -199,10 +212,10 @@ function isDuplicateMessage(senderNumber, messageText) {
         }
     }
 
-    // ✅ store new message
+    // ✅ store
     recentMessages.set(key, now);
 
-    // 🧹 cleanup old entries
+    // 🧹 cleanup
     setTimeout(() => {
         recentMessages.delete(key);
     }, DUPLICATE_WINDOW);
@@ -212,7 +225,12 @@ function isDuplicateMessage(senderNumber, messageText) {
 
 async function handleMessage(message) {
     try {
-        if (!message.from.includes('@g.us')) return;
+     
+        // ✅ Allow both group + personal
+        const isGroup = message.from.includes('@g.us');
+        const isPersonal = message.from.includes('@c.us');
+
+        if (!isGroup && !isPersonal) return;
         if (!message.body) return;
 
         const text = message.body.toLowerCase();
@@ -229,7 +247,14 @@ async function handleMessage(message) {
 
         const senderRaw = message.author || message.from;
 
+        // ✅ FIX number for personal chat
         let senderNumber = senderRaw.split('@')[0];
+
+        if (message.from.includes('@c.us')) {
+            senderNumber = message.from.split('@')[0];
+        }
+
+        // let senderNumber = senderRaw.split('@')[0];
         let senderName = senderNumber;
         let groupName = message.from.split('@')[0];
 
@@ -276,10 +301,12 @@ async function handleMessage(message) {
 
         console.log("🚨 LEAD:", senderName, groupName, senderNumber);
 
-        // ❌ DUPLICATE CHECK
-        if (isDuplicateMessage(senderNumber, message.body)) {
-            console.log("⛔ Duplicate skipped");
-            return;
+        // ❌ skip duplicate check for personal chat
+        if (message.from.includes('@g.us')) {
+            if (isDuplicateMessage(senderNumber, message.body)) {
+                console.log("⛔ Duplicate skipped");
+                return;
+            }
         }
 
         addLead({
