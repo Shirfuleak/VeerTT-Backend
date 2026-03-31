@@ -122,17 +122,21 @@ function addLead(newLead) {
    🤖 WHATSAPP BOT
 ========================= */
 
+const isRender = process.env.RENDER === "true";
+
 const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage'
-        ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-    }
+  authStrategy: new LocalAuth(),
+  puppeteer: {
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage'
+    ],
+    executablePath: isRender
+      ? '/opt/render/.cache/puppeteer/chrome/linux-*/chrome'
+      : undefined
+  }
 });
 
 const keywords = [
