@@ -130,28 +130,25 @@ const keywords = [
   "book","call","urgent"
 ];
 
+
+
 client.on('qr', async (qr) => {
-  try {
-    console.log("📱 QR RECEIVED");
+  console.log("📱 QR EVENT TRIGGERED"); // 👈 ADD THIS
 
-    isReady = false;
+  isReady = false;
 
-    // terminal QR
-    qrcode.generate(qr, { small: true });
+  const qrImage = await QRCode.toDataURL(qr);
+  latestQR = qrImage;
 
-    // frontend QR
-    latestQR = await QRCode.toDataURL(qr);
-
-    console.log("✅ QR stored for frontend");
-
-  } catch (err) {
-    console.error("❌ QR error:", err.message);
-  }
+  console.log("✅ QR STORED");
 });
 
 client.on('ready', () => {
+  console.log("✅ CLIENT READY");
+
   isReady = true;
   latestQR = null;
+
   userInfo = {
     name: client.info.pushname,
     number: client.info.wid.user
@@ -276,7 +273,16 @@ client.on('disconnected', () => {
 process.on('unhandledRejection', () => {});
 process.on('uncaughtException', () => {});
 
+console.log("App initializing...");
+
 client.initialize();
+
+setTimeout(() => {
+  console.log("🔄 Forcing re-init...");
+  if (!isReady) {
+    client.initialize();
+  }
+}, 10000);
 
 /* =========================
    🚀 START SERVER
