@@ -14,8 +14,7 @@ app.use(express.json());
 const contactCache = new Map();
 const groupCache = new Map();
 
-const recentMessages = new Map();
-const DUPLICATE_WINDOW = 5 * 60 * 1000; // 5 minutes
+
 
 let latestQR = null;
 let isReady = false;
@@ -187,29 +186,6 @@ client.on('message_create', (message) => {
     setImmediate(() => handleMessage(message));
 });
 
-function isDuplicateMessage(senderNumber, messageText) {
-    const key = senderNumber + "_" + messageText.trim().toLowerCase();
-    const now = Date.now();
-
-    if (recentMessages.has(key)) {
-        const lastTime = recentMessages.get(key);
-
-        if (now - lastTime < DUPLICATE_WINDOW) {
-            return true; // ❌ duplicate
-        }
-    }
-
-    // ✅ store new message
-    recentMessages.set(key, now);
-
-    // 🧹 cleanup old entries
-    setTimeout(() => {
-        recentMessages.delete(key);
-    }, DUPLICATE_WINDOW);
-
-    return false;
-}
-
 async function handleMessage(message) {
     try {
         if (!message.from.includes('@g.us')) return;
@@ -275,12 +251,6 @@ async function handleMessage(message) {
         }
 
         console.log("🚨 LEAD:", senderName, groupName, senderNumber);
-
-        // ❌ DUPLICATE CHECK
-        if (isDuplicateMessage(senderNumber, message.body)) {
-            console.log("⛔ Duplicate skipped");
-            return;
-        }
 
         addLead({
             groupName,

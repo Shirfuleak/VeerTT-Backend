@@ -11,12 +11,6 @@ app.use(express.json());
 /* =========================
    🔐 STATE
 ========================= */
-const contactCache = new Map();
-const groupCache = new Map();
-
-const recentMessages = new Map();
-const DUPLICATE_WINDOW = 5 * 60 * 1000; // 5 minutes
-
 let latestQR = null;
 let isReady = false;
 let userInfo = null;
@@ -24,7 +18,8 @@ let userInfo = null;
 /* =========================
    📊 LEAD STORAGE
 ========================= */
-let leads = [];
+let leads = []; 
+
 const MAX_LEADS = 500;
 
 /* =========================
@@ -187,29 +182,6 @@ client.on('message_create', (message) => {
     setImmediate(() => handleMessage(message));
 });
 
-function isDuplicateMessage(senderNumber, messageText) {
-    const key = senderNumber + "_" + messageText.trim().toLowerCase();
-    const now = Date.now();
-
-    if (recentMessages.has(key)) {
-        const lastTime = recentMessages.get(key);
-
-        if (now - lastTime < DUPLICATE_WINDOW) {
-            return true; // ❌ duplicate
-        }
-    }
-
-    // ✅ store new message
-    recentMessages.set(key, now);
-
-    // 🧹 cleanup old entries
-    setTimeout(() => {
-        recentMessages.delete(key);
-    }, DUPLICATE_WINDOW);
-
-    return false;
-}
-
 async function handleMessage(message) {
     try {
         if (!message.from.includes('@g.us')) return;
@@ -220,67 +192,38 @@ async function handleMessage(message) {
         // ✅ INCLUDE
         if (!keywords.some(k => text.includes(k))) return;
 
-        // ❌ EXCLUDE
+        // ❌ EXCLUDE (avoid wrong leads)
         const excludeKeywords = [
             "available", "free", "got cab", "i have",
             "vacant", "empty"
         ];
         if (excludeKeywords.some(k => text.includes(k))) return;
 
+        // 🚀 SAFE DATA (NO PUPPETEER CALLS)
+        // const senderRaw = message.author || message.from;
         const senderRaw = message.author || message.from;
+// const senderNumber = senderRaw.split('@')[0];
 
-        let senderNumber = senderRaw.split('@')[0];
-        let senderName = senderNumber;
-        let groupName = message.from.split('@')[0];
+        // const senderNumber = senderRaw.replace(/@.*/, "");
+        const senderNumber =
+    message._data?.participant?.split('@')[0] ||
+    senderRaw.split('@')[0];
+        const groupId = message.from.replace(/@.*/, "");
 
-        // 🔥 CHECK CACHE FIRST
-        if (contactCache.has(senderRaw)) {
-            const data = contactCache.get(senderRaw);
-            senderName = data.name;
-            senderNumber = data.number;
-        }
+        const senderName =
+            message._data?.notifyName ||
+            message._data?.pushname ||
+            senderNumber;
 
-        if (groupCache.has(message.from)) {
-            groupName = groupCache.get(message.from);
-        }
+        // const groupName =
+        //     message._data?.chat?.name ||
+        //     groupId;
+        const groupName =
+    message._data?.chat?.formattedTitle ||
+    message._data?.chat?.name ||
+    "Unknown Group";
 
-        // 🔥 ONLY FETCH IF NOT IN CACHE (VERY IMPORTANT)
-        if (!contactCache.has(senderRaw) || !groupCache.has(message.from)) {
-            try {
-                const contact = await message.getContact();
-                const chat = await message.getChat();
-
-                // 👤 CONTACT
-                if (contact) {
-                    senderName = contact.pushname || contact.name || senderNumber;
-
-                    // ⚡ BEST NUMBER SOURCE
-                    senderNumber = contact.number || senderNumber;
-
-                    contactCache.set(senderRaw, {
-                        name: senderName,
-                        number: senderNumber
-                    });
-                }
-
-                // 👥 GROUP
-                if (chat) {
-                    groupName = chat.name || groupName;
-                    groupCache.set(message.from, groupName);
-                }
-
-            } catch (err) {
-                console.log("⚠️ Fetch skipped (safe)");
-            }
-        }
-
-        console.log("🚨 LEAD:", senderName, groupName, senderNumber);
-
-        // ❌ DUPLICATE CHECK
-        if (isDuplicateMessage(senderNumber, message.body)) {
-            console.log("⛔ Duplicate skipped");
-            return;
-        }
+        console.log("🚨 LEAD:", senderName, message.body);
 
         addLead({
             groupName,
