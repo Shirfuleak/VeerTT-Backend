@@ -3,7 +3,7 @@ services:
     name: whatsapp-lead-server
     env: node
     plan: free
-    buildCommand: npm install && npx puppeteer browsers install chrome
+    buildCommand: npm install && npx puppeteer install chrome
     startCommand: node server.js
     autoDeploy: true
 
