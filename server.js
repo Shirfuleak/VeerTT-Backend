@@ -43,13 +43,9 @@ app.get('/qr', (req, res) => {
     return res.json({ status: "connected" });
   }
 
-  if (!latestQR) {
-    return res.json({ status: "waiting" });
-  }
-
   return res.json({
-    status: "qr",
-    qr: latestQR
+    status: latestQR ? "qr" : "waiting",
+    qr: latestQR || null
   });
 });
 
